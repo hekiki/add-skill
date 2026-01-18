@@ -59,7 +59,7 @@ program.parse();
 
 async function main(source: string, options: Options) {
   console.log();
-  p.intro(chalk.bgCyan.black(' add-skill '));
+  p.intro(chalk.bgCyan.black(' skills '));
 
 let tempDir: string | null = null;
 
@@ -293,28 +293,46 @@ let tempDir: string | null = null;
     const failed = results.filter(r => !r.success);
 
     // Track installation result
+    // Build skillFiles map: { skillName: relative path to SKILL.md }
+    const skillFiles: Record<string, string> = {};
+    for (const skill of selectedSkills) {
+      // skill.path is absolute, compute relative from tempDir
+      const relativePath = skill.path.replace(tempDir + '/', '');
+      skillFiles[skill.name] = relativePath + '/SKILL.md';
+    }
+
     track({
       event: 'install',
       source,
       skills: selectedSkills.map(s => s.name).join(','),
       agents: targetAgents.join(','),
       ...(installGlobally && { global: '1' }),
+      skillFiles: JSON.stringify(skillFiles),
     });
 
     if (successful.length > 0) {
-      p.log.success(chalk.green(`Successfully installed ${successful.length} skill${successful.length !== 1 ? 's' : ''}`));
+      // Group by skill name for cleaner output
+      const bySkill = new Map<string, string[]>();
       for (const r of successful) {
-        p.log.message(`  ${chalk.green('✓')} ${r.skill} → ${r.agent}`);
-        p.log.message(`    ${chalk.dim(r.path)}`);
+        const agents = bySkill.get(r.skill) || [];
+        agents.push(r.agent);
+        bySkill.set(r.skill, agents);
+      }
+      
+      const skillCount = bySkill.size;
+      const agentCount = new Set(successful.map(r => r.agent)).size;
+      p.log.success(chalk.green(`Installed ${skillCount} skill${skillCount !== 1 ? 's' : ''} to ${agentCount} agent${agentCount !== 1 ? 's' : ''}`));
+      
+      for (const [skill, agents] of bySkill) {
+        p.log.message(`  ${chalk.green('✓')} ${skill} ${chalk.dim('→')} ${chalk.dim(agents.join(', '))}`);
       }
     }
 
     if (failed.length > 0) {
       console.log();
-      p.log.error(chalk.red(`Failed to install ${failed.length} skill${failed.length !== 1 ? 's' : ''}`));
+      p.log.error(chalk.red(`Failed to install ${failed.length}`));
       for (const r of failed) {
-        p.log.message(`  ${chalk.red('✗')} ${r.skill} → ${r.agent}`);
-        p.log.message(`    ${chalk.dim(r.error)}`);
+        p.log.message(`  ${chalk.red('✗')} ${r.skill} → ${r.agent}: ${chalk.dim(r.error)}`);
       }
     }
 
